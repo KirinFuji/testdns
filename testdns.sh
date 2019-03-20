@@ -215,3 +215,5 @@ else
 echo "SafeDNS Lookup Failed"
 echo ""
 fi
+
+#KFuji
