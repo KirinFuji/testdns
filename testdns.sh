@@ -1,219 +1,200 @@
 #!/bin/bash
-#testdns - Coded by kfuji
-#Primarily used to get a visual of GEO IP/DNS Routing and DNS propagation.
+##### DNS Servers #####
 
-if [ $# -gt 1 ]; then
-echo "Too many arguments. Please only enter a domain or IP."
-exit 1 #Failure
+local_DNS=$(cat /etc/resolv.conf | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' | head -n1 )
+
+export DNS_l=(
+"$local_DNS"
+1.1.1.1
+8.8.8.8
+9.9.9.9
+195.46.39.39
+208.67.222.222
+216.146.35.35
+64.6.64.6
+209.244.0.3
+64.81.79.2
+216.27.175.2
+64.81.45.2
+64.81.127.2
+64.81.159.2
+66.92.159.2
+216.254.95.2
+)
+
+export DNS_Name_l=(
+"Local DNS"
+"Cloudflare DNS"
+"Google DNS"
+"Quad9 DNS"
+"SafeDNS"
+"Cisco OpenDNS"
+"Dyn DNS"
+"VeriSign DNS"
+"Level 3 DNS"
+"dns.sfo1.speakeasy.net"
+"dns.atl1.speakeasy.net"
+"dns.lax1.speakeasy.net"
+"dns.dfw1.speakeasy.net"
+"dns.chi1.speakeasy.net"
+"dns.wdc1.speakeasy.net"
+"dns.nyc1.speakeasy.net"
+)
+
+
+
+##### Input Sanitization #####
+
+#Options should be --type (-t) --host (-h)
+
+OPTS=$(getopt -o t:h: --long type:,host: -n 'parse-options' -- "$@");
+
+if [ $? != 0 ]; then
+    echo "Failed parsing options." 1>&2;
+    exit1;
+fi;
+
+eval set -- "$OPTS";
+
+echo "$@"; #debug
+
+if [ "$@" = "--" ];then
+echo "No input detected. Please use -h <hostname/ip> and -t <record type> (mx, a, etc)."
 fi
 
-if [[ "$1" =~ ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$ ]]; then
-#debug#echo "rDNS lookup detected."
-echo ""
-rdns=1
+type='a';
+host='null';
+
+while true; do
+    case "$1" in
+        -t | --type)
+            type="$2";
+            shift 2
+        ;;
+        -h | --host)
+            host="$2";
+            shift 2
+        ;;
+        --)
+            shift;
+            break
+        ;;
+        *)
+            break
+        ;;
+    esac;
+done;
+
+
+echo Type: "$type"; #debug
+echo Host: "$host"  #debug
+
+if [ $# -gt 0 ]; then
+    echo "Extra arg detected. Please use -h <hostname/ip> and -t <record type> (mx, a, etc)."
+    exit 1 #Failure
+fi
+
+if [ "$host" = "null" ];then
+	echo "Please specify a host. (ex. -h google.com )"
+
+if [[ "$type" != [aA] ]] || [[ "$type" != [mM][xX] ]] || [[ "$type" != [sS][rR][vV] ]] ; then
+	echo "Type: $type is invalid. (ex. -t a or mx or srv"
+	exit 1 #Failure
+fi
+
+if [[ "$host" =~ ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$ ]]; then
+    rdns=1
+	type=a
 else
-rdns=0
+    rdns=0
 fi
 
-if [ "$1" = "" ]; then
-echo "No Input Detected"
-exit 1
+if [[ "$type" == [mM][xX] ]] || [[ "$type" == [sS][rR][vV] ]] && [ "$rdns" -eq "1" ]; then
+	echo "You cannot lookup MX records against an IP address."
+	exit 1
 fi
 
-local_DNS=$(host -4sv -t a $1 )
-local_DNS_Success=$?
 
-if [ "$rdns" -eq "1" ]; then
-local_DNS_IPs=$( echo "$local_DNS" | grep -A 1 ";; ANSWER SECTION:" |  grep -o -P '(?<=PTR).*(?=.*)' | awk '{$1=$1};1' | sed 's/\.$//' ); else
-local_DNS_IPs=$( echo "$local_DNS" | grep IN | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' ); fi
 
-local_DNS_time_var=$( echo "$local_DNS" | grep "bytes from" )
-local_DNS_time=${local_DNS_time_var#*in }
-
-if [ $local_DNS_Success -eq 0 ]; then
-echo "Local DNS Server reply:"
-echo "$local_DNS_IPs"
-echo "Time to query: $local_DNS_time"
-echo ""
+if [[ "$type" == [mM][xX] ]] ; then
+    mx=1
 else
-echo "Local DNS Lookup Failed"
-echo ""
+	mx=0
 fi
+
+if [[ "$type" == [sS][rR][vV] ]];then
+	srv=1
+else
+	srv=0
+fi
+
+lookup_f2
+{
+server_name="${DNS_Name_l[$loop_n]}"
+
+lookup_DNS=$(host -4sv -t $type $host $dns_server)
+lookup_DNS_Success=$?
+echo "Reply from $dns_server ($server_name):"
+echo "$lookup_DNS"
+}
+
+lookup_f()
+{
+server_name="${DNS_Name_l[$loop_n]}"
+
+lookup_DNS=$(host -4sv -t $type $host $dns_server)
+lookup_DNS_Success=$?
+
+if [ "$rdns" -eq "1" ] && [[ "$type" == [aA] ]]; then
+	lookup_DNS_IPs=$( echo "$lookup_DNS" | grep -A 1 "ANSWER SECTION" |  grep -o -P '(?<=PTR).*(?=.*)' | awk '{$1=$1};1' | sed 's/\.$//' )
+fi
+if [ "$rdns" -eq "0" ] && [[ "$type" == [aA] ]]; then
+	lookup_DNS_IPs=$( echo "$lookup_DNS" | grep IN | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' )
+fi
+
+
+lookup_DNS_time_var=$( echo "$lookup_DNS" | grep "bytes from $dns_server#53" )
+lookup_DNS_time=${lookup_DNS_time_var#*in }
+
+if [ $lookup_DNS_Success -eq "0" ]; then
+	if [ "$mx" = "1" ] && [ "$rdns" -eq "0" ]; then
+		echo "Reply from $dns_server ($server_name):"
+		echo "$lookup_DNS" | sed '1,/^;; ANSWER SECTION:$/d' | grep -v "bytes from $dns_server" | sed -e :a -e '/^\n*$/{$d;N;};/\n$/ba'
+        echo "Time to query: $lookup_DNS_time"
+		echo "------------------------------------------------------------------------"
+	fi
+	
+	if [ "$mx" = "0" ] && [ "$rdns" -eq "0" ]; then
+		echo "Reply from $dns_server ($server_name):"
+		echo "$input points to $lookup_DNS_IPs"
+		echo "Time to query: $lookup_DNS_time"
+		echo ""
+	fi
+	
+	if [ "$mx" = "0" ] && [ "$rdns" -eq "1" ]; then
+		echo "Reply from $dns_server ($server_name):"
+		echo "$input rDNS is $lookup_DNS_IPs"
+		echo "Time to query: $lookup_DNS_time"
+		echo ""
+	fi
+else
+	echo "DNS Lookup Failed against $dns_server"
+	echo ""
+fi
+}
+
+
+#if [ "$mx" = "1" ]; then
+#echo "------------------------------------------------------------------------"
+#fi
+
+loop_n=0
+
+for dns_server in ${DNS_l[@]}; do
+
+lookup_f2
+((loop_n++))
 
 wait
 
-Google=$(host -4sv -t a $1 8.8.8.8 )
-Google_Success=$?
-
-if [ "$rdns" -eq "1" ]; then
-Google_IPs=$( echo "$Google" | grep -A 1 ";; ANSWER SECTION:" |  grep -o -P '(?<=PTR).*(?=.*)' | awk '{$1=$1};1' | sed 's/\.$//' ); else
-Google_IPs=$( echo "$Google" | grep IN | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' ); fi
-
-Google_time_var=$( echo "$Google" | grep "bytes from" )
-Google_time=${Google_time_var#*in }
-
-if [ $Google_Success -eq 0 ]; then
-echo "Google DNS reply:"
-echo "$Google_IPs"
-echo "Time to query: $Google_time"
-echo ""
-else
-echo "Google DNS Lookup Failed"
-echo ""
-fi
-
-wait
-
-Cloudflare=$(host -4sv -t a $1 1.1.1.1 )
-Cloudflare_Success=$?
-
-if [ "$rdns" -eq "1" ]; then
-Cloudflare_IPs=$( echo "$Cloudflare" | grep -A 1 ";; ANSWER SECTION:" |  grep -o -P '(?<=PTR).*(?=.*)' | awk '{$1=$1};1' | sed 's/\.$//' ); else
-Cloudflare_IPs=$( echo "$Cloudflare" | grep IN | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' ); fi
-
-Cloudflare_time_var=$( echo "$Cloudflare" | grep "bytes from" )
-Cloudflare_time=${Cloudflare_time_var#*in }
-
-if [ $Cloudflare_Success -eq 0 ]; then
-echo "Cloudflare reply:"
-echo "$Cloudflare_IPs"
-echo "Time to query: $Cloudflare_time"
-echo ""
-else
-echo "Cloudflare DNS Lookup Failed"
-echo ""
-fi
-
-wait
-
-Quad9=$(host -4sv -t a $1 9.9.9.9 )
-Quad9_Success=$?
-
-if [ "$rdns" -eq "1" ]; then
-Quad9_IPs=$( echo "$Quad9" | grep -A 1 ";; ANSWER SECTION:" |  grep -o -P '(?<=PTR).*(?=.*)' | awk '{$1=$1};1' | sed 's/\.$//' ); else
-Quad9_IPs=$( echo "$Quad9" | grep IN | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' ); fi
-
-Quad9_time_var=$( echo "$Quad9" | grep "bytes from" )
-Quad9_time=${Quad9_time_var#*in }
-
-if [ $Quad9_Success -eq 0 ]; then
-echo "Quad9 reply:"
-echo "$Quad9_IPs"
-echo "Time to query: $Quad9_time"
-echo ""
-else
-echo "Quad9 DNS Lookup Failed"
-echo ""
-fi
-
-wait
-
-Level3=$(host -4sv -t a $1 209.244.0.3 )
-Level3_Success=$?
-
-if [ "$rdns" -eq "1" ]; then
-Level3_IPs=$( echo "$Level3" | grep -A 1 ";; ANSWER SECTION:" |  grep -o -P '(?<=PTR).*(?=.*)' | awk '{$1=$1};1' | sed 's/\.$//' ); else
-Level3_IPs=$( echo "$Level3" | grep IN | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' ); fi
-
-Level3_time_var=$( echo "$Level3" | grep "bytes from" )
-Level3_time=${Level3_time_var#*in }
-
-if [ $Level3_Success -eq 0 ]; then
-echo "Level3 DNS reply:"
-echo "$Level3_IPs"
-echo "Time to query: $Level3_time"
-echo ""
-else
-echo "Level3 DNS Lookup Failed"
-echo ""
-fi
-
-wait
-
-Verisign=$(host -4sv -t a $1 64.6.64.6 )
-Verisign_Success=$?
-
-if [ "$rdns" -eq "1" ]; then
-Verisign_IPs=$( echo "$Verisign" | grep -A 1 ";; ANSWER SECTION:" |  grep -o -P '(?<=PTR).*(?=.*)' | awk '{$1=$1};1' | sed 's/\.$//' ); else
-Verisign_IPs=$( echo "$Verisign" | grep IN | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' ); fi
-
-Verisign_time_var=$( echo "$Verisign" | grep "bytes from" )
-Verisign_time=${Verisign_time_var#*in }
-
-if [ $Verisign_Success -eq 0 ]; then
-echo "Verisign DNS reply:"
-echo "$Verisign_IPs"
-echo "Time to query: $Verisign_time"
-echo ""
-else
-echo "Verisign DNS Lookup Failed"
-echo ""
-fi
-
-wait
-
-DynDNS=$(host -4sv -t a $1 216.146.35.35 )
-DynDNS_Success=$?
-
-if [ "$rdns" -eq "1" ]; then
-DynDNS_IPs=$( echo "$DynDNS" | grep -A 1 ";; ANSWER SECTION:" |  grep -o -P '(?<=PTR).*(?=.*)' | awk '{$1=$1};1' | sed 's/\.$//' ); else
-DynDNS_IPs=$( echo "$DynDNS" | grep IN | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' ); fi
-
-DynDNS_time_var=$( echo "$DynDNS" | grep "bytes from" )
-DynDNS_time=${DynDNS_time_var#*in }
-
-if [ $DynDNS_Success -eq 0 ]; then
-echo "DynDNS reply:"
-echo "$DynDNS_IPs"
-echo "Time to query: $DynDNS_time"
-echo ""
-else
-echo "DynDNS Lookup Failed"
-echo ""
-fi
-
-wait
-
-OpenDNS=$(host -4sv -t a $1 208.67.222.222 )
-OpenDNS_Success=$?
-
-if [ "$rdns" -eq "1" ]; then
-OpenDNS_IPs=$( echo "$OpenDNS" | grep -A 1 ";; ANSWER SECTION:" |  grep -o -P '(?<=PTR).*(?=.*)' | awk '{$1=$1};1' | sed 's/\.$//' ); else
-OpenDNS_IPs=$( echo "$OpenDNS" | grep IN | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' ); fi
-
-OpenDNS_time_var=$( echo "$OpenDNS" | grep "bytes from" )
-OpenDNS_time=${OpenDNS_time_var#*in }
-
-if [ $OpenDNS_Success -eq 0 ]; then
-echo "OpenDNS reply:"
-echo "$OpenDNS_IPs"
-echo "Time to query: $OpenDNS_time"
-echo ""
-else
-echo "OpenDNS Lookup Failed"
-echo ""
-fi
-
-wait
-
-SafeDNS=$(host -4sv -t a $1 195.46.39.39 )
-SafeDNS_Success=$?
-
-if [ "$rdns" -eq "1" ]; then
-SafeDNS_IPs=$( echo "$SafeDNS" | grep -A 1 ";; ANSWER SECTION:" |  grep -o -P '(?<=PTR).*(?=.*)' | awk '{$1=$1};1' | sed 's/\.$//' ); else
-SafeDNS_IPs=$( echo "$SafeDNS" | grep IN | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' ); fi
-
-SafeDNS_time_var=$( echo "$SafeDNS" | grep "bytes from" )
-SafeDNS_time=${SafeDNS_time_var#*in }
-
-if [ $SafeDNS_Success -eq 0 ]; then
-echo "SafeDNS reply:"
-echo "$SafeDNS_IPs"
-echo "Time to query: $SafeDNS_time"
-echo ""
-else
-echo "SafeDNS Lookup Failed"
-echo ""
-fi
-
-#KFuji
+done
