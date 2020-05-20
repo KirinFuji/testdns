@@ -1,6 +1,8 @@
 #!/bin/bash
 ##### DNS Servers #####
 
+# Written By KirinFuji
+
 local_DNS=$(cat /etc/resolv.conf | grep -E -o '(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' | head -n1 )
 
 export DNS_l=(
@@ -13,13 +15,6 @@ export DNS_l=(
 216.146.35.35
 64.6.64.6
 209.244.0.3
-64.81.79.2
-216.27.175.2
-64.81.45.2
-64.81.127.2
-64.81.159.2
-66.92.159.2
-216.254.95.2
 )
 
 export DNS_Name_l=(
@@ -32,13 +27,6 @@ export DNS_Name_l=(
 "Dyn DNS"
 "VeriSign DNS"
 "Level 3 DNS"
-"dns.sfo1.speakeasy.net"
-"dns.atl1.speakeasy.net"
-"dns.lax1.speakeasy.net"
-"dns.dfw1.speakeasy.net"
-"dns.chi1.speakeasy.net"
-"dns.wdc1.speakeasy.net"
-"dns.nyc1.speakeasy.net"
 )
 
 
